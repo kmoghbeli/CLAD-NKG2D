@@ -1,0 +1,408 @@
+---
+title: "Explant demux data prep"
+author: "Kaveh Moghbeli"
+output: html_notebook
+--- 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r init}
+library(tidyverse)
+library(Seurat)
+library(sctransform)
+library(scRepertoire)
+
+#Project Settings
+PROJECT <- "Explant-Lung-HLN"
+data_dir <- "~/Dropbox/RNA/r_objects/"
+
+#Sample types
+LUNG <- "Lung"
+HLN <- "HLN"
+BAL <- "BAL"
+PBMC <- "PBMC"
+
+#Disease
+CLAD <- "CLAD"
+CONTROL <- "Control"
+IPF <- "IPF"
+
+#Timepoint
+EXPLANT <- "explant"
+
+metadata <- list("nov2021_gw1_data" = list("HTO-1-TotalC" = list(run = "Nov2021", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto1", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2020-5-C", 
+                                                                 disease = CONTROL), 
+                                           "HTO-2-TotalC" = list(run = "Nov2021", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto2", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2020-56-C", 
+                                                                 disease = CONTROL), 
+                                           "HTO-3-TotalC" = list(run = "Nov2021", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto3", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2020-47-LT", 
+                                                                 disease = CLAD), 
+                                           "HTO-4-TotalC" = list(run = "Nov2021", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto4", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2021-10-LT", 
+                                                                 disease = CLAD)), 
+                 "aug2022_gw1_data" = list("HTO-1-TotalC" = list(run = "Aug2022", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto1", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2020-10-LT",   ## Note from Kaveh - this was previously listed as "2021-47-LT" per our metadata but this appears to be incorrect and this sample appears to have been swapped with 2020-10-LT so this reflects that correction
+                                                                 disease = CLAD), 
+                                           "HTO-2-TotalC" = list(run = "Aug2022", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto2", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2021-47-LT", 
+                                                                 disease = CLAD), 
+                                           "HTO-3-TotalC" = list(run = "Aug2022", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto3", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2020-5-C", 
+                                                                 disease = CONTROL), 
+                                           "HTO-4-TotalC" = list(run = "Aug2022", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto4", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2020-56-C", 
+                                                                 disease = CONTROL)), 
+                 "aug2022_gw2_data" = list("HTO-1-TotalC" = list(run = "Aug2022", 
+                                                                 gemwell = "GW2", 
+                                                                 hto = "hto1", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2020-45-LT", 
+                                                                 disease = CLAD), 
+                                           "HTO-2-TotalC" = list(run = "Aug2022", 
+                                                                 gemwell = "GW2", 
+                                                                 hto = "hto2", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2020-45-LT", 
+                                                                 disease = CLAD), 
+                                           "HTO-3-TotalC" = list(run = "Aug2022", 
+                                                                 gemwell = "GW2", 
+                                                                 hto = "hto3", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2021-38-C", 
+                                                                 disease = CONTROL), 
+                                           "HTO-4-TotalC" = list(run = "Aug2022", 
+                                                                 gemwell = "GW2", 
+                                                                 hto = "hto4", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "2021-38-C", 
+                                                                 disease = CONTROL)), 
+                 "nov2022_gw1_data" = list("HTO-4-TotalC" = list(run = "Nov2022", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto4", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "IPF1", 
+                                                                 disease = IPF), 
+                                           "HTO-5-TotalC" = list(run = "Nov2022", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto5", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "IPF2", 
+                                                                 disease = IPF), 
+                                           "HTO-6-TotalC" = list(run = "Nov2022", 
+                                                                 gemwell = "GW1", 
+                                                                 hto = "hto6", 
+                                                                 sample_type = LUNG, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "IPF3", 
+                                                                 disease = IPF)), 
+                 "nov2022_gw2_data" = list("HTO-4-TotalC" = list(run = "Nov2022", 
+                                                                 gemwell = "GW2", 
+                                                                 hto = "hto4", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "IPF1", 
+                                                                 disease = IPF), 
+                                           "HTO-5-TotalC" = list(run = "Nov2022", 
+                                                                 gemwell = "GW2", 
+                                                                 hto = "hto5", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "IPF2", 
+                                                                 disease = IPF), 
+                                           "HTO-6-TotalC" = list(run = "Nov2022", 
+                                                                 gemwell = "GW2", 
+                                                                 hto = "hto6", 
+                                                                 sample_type = HLN, 
+                                                                 timepoint = EXPLANT, 
+                                                                 patient = "IPF3", 
+                                                                 disease = IPF))
+)
+```
+
+
+```{r load_files}
+
+## TODO - REFACTOR THIS INTO METADATA!!
+
+nov2021_data <-Read10X(data.dir = "~/Dropbox/RNA/ChenkongNov_11_2021/HTO/outs/filtered_feature_bc_matrix/")
+nov2021_contig <- read.csv("~/Dropbox/RNA/ChenkongNov_11_2021/TCR/outs/filtered_contig_annotations.csv")
+
+aug2022_gw1_data <-Read10X(data.dir = "~/Dropbox/RNA/chenkong0036_20220813/CR outs/HTO1/outs/filtered_feature_bc_matrix/")
+aug2022_gw1_contig <- read.csv("~/Dropbox/RNA/chenkong0036_20220813/CR outs/TCR1/outs/filtered_contig_annotations.csv")
+
+aug2022_gw2_data <-Read10X(data.dir = "~/Dropbox/RNA/chenkong0036_20220813/CR outs/HTO2/outs/filtered_feature_bc_matrix/")
+aug2022_gw2_contig <- read.csv("~/Dropbox/RNA/chenkong0036_20220813/CR outs/TCR2/outs/filtered_contig_annotations.csv")
+
+nov2022_gw1_data <-Read10X(data.dir = "~/Dropbox/RNA/20221115_HTO+TCR/cellranger outs/HTO_Lung/outs/filtered_feature_bc_matrix/")
+nov2022_gw1_contig <- read.csv("~/Dropbox/RNA/20221115_HTO+TCR/cellranger outs/TCR_Lung/outs/filtered_contig_annotations.csv")
+
+nov2022_gw2_data <-Read10X(data.dir = "~/Dropbox/RNA/20221115_HTO+TCR/cellranger outs/HTO_LN/outs/filtered_feature_bc_matrix/")
+nov2022_gw2_contig <- read.csv("~/Dropbox/RNA/20221115_HTO+TCR/cellranger outs/TCR_LN/outs/filtered_contig_annotations.csv")
+
+seurat_combo_data_list <- list("nov2021_gw1_data" = list("data" = nov2021_data, 
+                                                         "contig" =  nov2021_contig),
+                               "aug2022_gw1_data" = list("data" = aug2022_gw1_data, 
+                                                         "contig" = aug2022_gw1_contig), 
+                               "aug2022_gw2_data" = list("data" = aug2022_gw2_data, 
+                                                         "contig" = aug2022_gw2_contig),
+                               "nov2022_gw1_data" = list("data" = nov2022_gw1_data, 
+                                                         "contig" = nov2022_gw1_contig), 
+                               "nov2022_gw2_data" = list("data" = nov2022_gw2_data, 
+                                                         "contig" = nov2022_gw2_contig)
+)
+```
+
+```{r get_annotated_htos}
+annotated_hto_singlet_objs <- list()
+full_combined_tcr <- list()
+
+for (gemwell_run in names(seurat_combo_data_list)) {
+  data <- seurat_combo_data_list[[gemwell_run]]$data
+  
+  ## Step 1: Prep the HTO data for future de-multiplexing
+  # Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+  # filtered the cells for you, but perform this step for clarity.
+  joint_barcodes <- intersect(colnames(data$`Gene Expression`),   # UMI barcodes 
+                              colnames(data$`Antibody Capture`))  # HTO barcodes
+  
+  umis <- data$`Gene Expression`[, joint_barcodes]
+  htos <- data$`Antibody Capture`[, joint_barcodes]
+  
+  hto_names <- rownames(htos)
+  
+  seurat_obj <- CreateSeuratObject(counts = umis, project = PROJECT)
+  
+  # Step 2: De-multiplex
+  # Add HTO data as a new assay independent from RNA
+  seurat_obj[["HTO"]] <- CreateAssayObject(counts = htos)
+  
+  # Normalize HTO data, here we use centered log-ratio (CLR) transformation
+  seurat_obj <- NormalizeData(seurat_obj, assay = "HTO", normalization.method = "CLR")
+  
+  # If you have a very large dataset we suggest using k_function = 'clara'. This is a k-medoid
+  # clustering function for large applications You can also play with additional parameters (see
+  # documentation for HTODemux()) to adjust the threshold for classification Here we are using
+  # the default settings
+  seurat_obj <- HTODemux(seurat_obj, assay = "HTO", positive.quantile = 0.99)
+  
+  #print(gemwell_run)
+  #print(table(seurat_obj$HTO_classification.global, seurat_obj$HTO_maxID))
+  
+  ##*** Subset the Seurat Objects into their respective singlet HTOs
+  Idents(seurat_obj) <- "HTO_classification.global"
+  seurat_obj.singlets <- subset(seurat_obj, idents = "Singlet")
+  Idents(seurat_obj.singlets) <- "HTO_classification"
+  
+  annotated_hto_singlet_objs[[gemwell_run]] <- seurat_obj.singlets
+  
+  ## Get and demux the TCR data
+  contigs <- seurat_combo_data_list[[gemwell_run]]$contig
+
+  samples_list <- list()
+  for (hto in names(metadata[[gemwell_run]])) {
+    sample_info <- metadata[[gemwell_run]][[hto]]
+    ## TODO: Refactor below into a "sample_id"
+    
+    samples_list[[hto]] <- paste(sample_info$disease, 
+                                 sample_info$timepoint, 
+                                 sample_info$sample_type, 
+                                 sample_info$patient, 
+                                 sample_info$run, 
+                                 sample_info$gemwell, 
+                                 sample_info$hto, 
+                                 sep = "_")
+  }
+
+  #contig.list <- createHTOContigList(contigs, seurat_obj, group.by = "HTO_maxID")
+  contig.list.singlets <- createHTOContigList(contigs, seurat_obj.singlets, group.by = "HTO_maxID")
+  
+  combined_tcr <- combineTCR(contig.list.singlets, 
+                             samples = unname(unlist(samples_list[names(contig.list.singlets)])), 
+                             #ID = c("P1", "P1"), 
+                             cells ="T-AB")
+  
+  full_combined_tcr <- append(full_combined_tcr, combined_tcr)
+}
+```
+
+
+```{r get_individual_hto_objs}
+individual_hto_objs <- list()
+
+for (gemwell_run in names(annotated_hto_singlet_objs)) {
+  
+  gw_obj_singlets <- annotated_hto_singlet_objs[[gemwell_run]]
+  
+  Idents(gw_obj_singlets) <- "HTO_classification"
+  
+  htos <- sort(levels(Idents(gw_obj_singlets)))
+  
+  for (hto in htos) {
+    sample_metadata <- metadata[[gemwell_run]][[hto]]
+    
+    sample.singlets.hto <- subset(gw_obj_singlets, idents = hto)
+    sample.singlets.hto.final <- CreateSeuratObject(counts = sample.singlets.hto@assays$RNA@counts, 
+                                                    project = PROJECT, 
+                                                    min.cells = 3, 
+                                                    min.features = 200)
+    
+    sample.singlets.hto.final$run <- sample_metadata$run 
+    sample.singlets.hto.final$gemwell <- sample_metadata$gemwell
+    sample.singlets.hto.final$hto <- sample_metadata$hto
+    sample.singlets.hto.final$sample_type <- sample_metadata$sample_type
+    sample.singlets.hto.final$timepoint <- sample_metadata$timepoint
+    sample.singlets.hto.final$patient <- sample_metadata$patient 
+    sample.singlets.hto.final$disease <- sample_metadata$disease
+    
+    sample_id <- paste(sample_metadata$disease, 
+                       sample_metadata$timepoint, 
+                       sample_metadata$sample_type, 
+                       sample_metadata$patient, 
+                       sample_metadata$run, 
+                       sample_metadata$gemwell, 
+                       sample_metadata$hto, 
+                       sep = "_")
+    
+    sample.singlets.hto.final$sample_id <- sample_id
+    
+    individual_hto_objs[[sample_id]] <- sample.singlets.hto.final
+  }
+}
+
+individual_hto_objs %>% readr::write_rds(paste0(data_dir, "individual_hto_seurat_objects.rds"))
+```
+
+
+Now we have the individual seurat objects for each experimental run gemwell and hto 
+and we can process them (normalize, etc) and combine them into one combined seurat object
+
+```{r combine_seurat_objs}
+seurat_obj.list <- list()
+
+for (seurat_object in individual_hto_objs) {
+  seurat_object[["percent.mt"]] <- PercentageFeatureSet(seurat_object, pattern="^MT-")
+  seurat_object <- subset(seurat_object, subset = nFeature_RNA > 200 & nFeature_RNA < 4000 & percent.mt < 10 & nCount_RNA < 40000)
+  
+  seurat_object <- SCTransform(seurat_object, 
+                               vst.flavor = "v2", 
+                               vars.to.regress = "percent.mt", 
+                               return.only.var.genes = FALSE,
+                               verbose = FALSE)
+  
+  seurat_obj.list <- append(seurat_obj.list, seurat_object)
+}
+
+sct.features <- SelectIntegrationFeatures(object.list = seurat_obj.list, nfeatures = 3000)
+seurat_obj.list <- PrepSCTIntegration(object.list = seurat_obj.list, 
+                                      anchor.features = sct.features, 
+                                      verbose = TRUE)
+
+sct.anchors <- FindIntegrationAnchors(object.list = seurat_obj.list, 
+                                      normalization.method = "SCT", 
+                                      anchor.features = sct.features, 
+                                      verbose = TRUE)
+
+sct.integrated <- IntegrateData(anchorset = sct.anchors, normalization.method = "SCT")
+
+## Dimensional reduction, clustering, and Umap should be done on the integrated assay
+DefaultAssay(sct.integrated) <- "integrated"
+
+# Dimensional reduction via PCA
+#sct.integrated <- ScaleData(sct.integrated, verbose = FALSE) # not needed: see scTransform v2 vignette with integration
+sct.integrated <- RunPCA(sct.integrated, verbose = FALSE)
+
+# Umap
+sct.integrated <- RunUMAP(sct.integrated, dims = 1:30, assay = "integrated")
+
+# Clustering
+sct.integrated <- FindNeighbors(sct.integrated, reduction = "pca", dims = 1:30)
+sct.integrated <- FindClusters(sct.integrated, resolution = 0.5)
+
+# Store the clusters
+sct.integrated$seurat_cluster <- Idents(sct.integrated)
+# Create an identity group for disease + timepoint
+sct.integrated$disease.timepoint <- paste(sct.integrated$disease, sct.integrated$timepoint, sep = "_")
+
+sct.integrated <- PrepSCTFindMarkers(sct.integrated)
+```
+
+```{r combine_integrated_with_tcr}
+
+## We need to fix the barcodes in "full_combined_tcr" here because Seurat's integration has changed them all 
+## Since the scRepertoire object is a bit simpler in structure, we will modify its barcodes
+## The key mapping here is in sct.integrated$sample_id which lists the corresponding "sample" in full_combined_tcr 
+## for each new integrated cell barcode. Basically for each sample/sample_id, we will find ALL the Seurat barcodes for that sample. 
+## Those will be of the form [old_barcode]_[number] where the "_[number]" is the new part added by Seurat integration so it doesn't collide 
+## with the same barcode from another sample being integrated. 
+## Here we will make a highly inefficient version first
+
+for (sample_id in names(full_combined_tcr)) {
+  sample_seurat_barcodes <- names(sct.integrated$sample_id[sct.integrated$sample_id == sample_id])
+  
+  sample_seurat_barcodes_pre_integ <- sub("_[0-9]+", "", sample_seurat_barcodes)
+  
+  sample_tcr <- full_combined_tcr[[sample_id]]
+  sample_tcr_stripped <- stripBarcode(sample_tcr, column = 1, connector = "_", num_connects = 8)
+  
+  new_tcr_barcodes <- sample_seurat_barcodes[match(sample_tcr_stripped$barcode, sample_seurat_barcodes_pre_integ)]
+  
+  sample_tcr$barcode <- new_tcr_barcodes
+  
+  full_combined_tcr[[sample_id]] <- sample_tcr
+}
+
+# Write out the "fixed barcode" full combined TCR
+full_combined_tcr %>% readr::write_rds(paste0(data_dir, "full_combined_tcr.rds"))
+
+sct.integrated <- combineExpression(full_combined_tcr,
+                                    sct.integrated,
+                                    cloneCall="strict",
+                                    group.by = "sample",
+                                    proportion = FALSE,
+                                    cloneTypes=c(Single=1, Small=5, Medium=20, Large=100, Hyperexpanded=500))
+
+sct.integrated %>% readr::write_rds(paste0(data_dir, "sct_integrated.rds"))
+```
+

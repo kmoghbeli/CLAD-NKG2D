@@ -1,0 +1,566 @@
+---
+title: "Explant CLAD Lung/HLN Data Visualization"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Project Notes
+EXPLANT CLAD LUNG + LYMPH NODE:
+Here’s what we have:
+6 people - 3 with CLAD, 3 controls ("controls = healthy donor/lungs not used for organ donation) - we have lung and lung draining LN
+- 12 samples total - RNA and TCR - flow sorted recipient T cells for all
+- Q1: what the f- is the lung draining LN? Mostly naive cells - but we’ve transported this lung, why is it like a normal secondary lymphoid organ? Why are there recipient cells there? These seem to have developed after the transplant 
+- Is there a difference in the population of the T cells between the LNs
+- We are also doing IF on the LNs: DAPI, CD4, CD8, CD45RA
+- Suspect there is more clonal overlap between the CLAD lung and LN as compared to the Healthy
+- Q2: relation to the lung/clonal overlap
+- Q3: From the overlap, is there something unique about the expanding clones? So take the overlapping clones and compare
+- 
+
+10/5/2022 - Mark's Questions
+1. What's the difference between CLAD and Control in LN and Lung?
+2. What we see globally as differences in Trm LN and Trm Lung?
+    1. Can cite Cell Reports Brahma Kumar - "CD69" reliably identifies TRM
+    2. Can also look at overlapping clones
+3. What is different about LN TRM and a Lung TRM?
+4. Flow Cytometry - when designing my panel, it is worthwhile to put a marker decision tree -> i.e., CD8 cell - all the antibodies that would be on that cell; CD4 cell - all the antibody that will be on that cell
+
+# Init
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r init, message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(Seurat)
+library(sctransform)
+library(scRepertoire)
+
+data_dir <- "../data/"
+figures_dir <- "../figures/"
+
+human_gene_markers_yaml <- yaml::yaml.load("
+t: 
+  lineage: ['CD3', 'CD8A', 'CD4']
+  naive: 
+    surface: ['SELL', 'IL7R', 'CCR7', 'CXCR3']
+    
+  effector: 
+    surface: ['IL2RA', 'TNFRSF8', 'CD44', 'CD69', 'IL2RB', 'TNFRSF4', 'LAG3', 'ICOS', 'KLRG1']
+    intra: ['TBX21', 'PRDM1', 'ID2']
+    cytokines: ['IFNG', 'IL2', 'PRF1', 'GZMA', 'GZMB', 'TNF', 'CCL3', 'CCL4', 'CCL5']
+    
+  effector_memory: 
+    surface: ['CD44', 'KLRG1', 'B3GAT1']
+    intra: ['EOMES', 'TBX21', 'PRDM1']
+    cytokines: ['GZMB', 'IFNG', 'IL2', 'PRF1', 'TNF']
+    low: ['SELL', 'CCR7']
+  
+  central_memory:
+    surface: ['IL7R', 'CD27', 'CD28']
+    intra: ['EOMES', 'TBX21']
+    cytokines: ['IFNG', 'IL2', 'TNF']
+    low: ['SELL', 'CCR7']
+    
+  resident_memory:
+    surface: ['CD69', 'CXCR6', 'ITGAE', 'CTLA4']
+  
+  regulatory:
+    surface: ['B3GAT1', 'CD28', 'KLRG1', 'LAG3', 'PDCD1', 'HLA-DRA']
+    intra: ['FOXP3', 'IKZF1', 'EGR1', 'EGR2']
+    cytokines: 
+    low: ['IL2']
+")
+```
+
+# Cluster Exploration and Subsetting T-cells
+
+```{r load_data, eval=FALSE, include=FALSE}
+sct.integrated <- readr::read_rds(paste0(data_dir, "sct_integrated.rds"))
+
+full_combined_tcr <- readr::read_rds(paste0(data_dir, "full_combined_tcr.rds"))
+```
+
+```{r cluster_exploration, eval=FALSE, include=FALSE}
+DefaultAssay(sct.integrated) <- "SCT"
+
+Idents(sct.integrated) <- sct.integrated$seurat_cluster
+
+DimPlot(sct.integrated, reduction = "umap", split.by = "organ.disease") + 
+  labs(title = "BLAH")
+
+FeaturePlot(sct.integrated, features = c("TRBC1", "CD3D", "CD4", "CD8A"), label = TRUE)
+FeaturePlot(sct.integrated, features = c("CD3D", "MS4A1", "CD68", "CD163", "CD14"), label = TRUE)
+
+#FeaturePlot(sct.integrated, features = c("TRBC1", "CD3D", "MS4A1", "CD4", "CD8A", "GZMK", "CD69", "CD68", "CD163", "CD14"), label = TRUE)
+```
+
+Based on the above, it appears that the following clusters are contaminants: 11 (B cells), 9 (Monos/Macs)
+*Note that if the Seurat object changes (e.g., new samples are added) then these clusters to exclude may change and need to be re-examined again
+
+```{r subset_t_cells, eval=FALSE, include=FALSE}
+Idents(sct.integrated) <- sct.integrated$seurat_clusters
+sct.integrated.t_only <- subset(sct.integrated, idents = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 13, 14))
+sct.integrated.t_only <- PrepSCTFindMarkers(sct.integrated.t_only)
+```
+
+```{r organ_disease, eval=FALSE, include=FALSE}
+FeaturePlot(sct.integrated.t_only, features = c("CD3D", "MS4A1", "CD4", "CD8A", "GZMK", "CD69", "CD68", "CD163", "CD14"), label = TRUE)
+
+##TODO: NOT ACCURATE - SEURAT OBJECT IS NEW
+# Clusters 1, 3, 5, and 14 seem to be Memory CD8 T-cells - so let's annotate them as such
+# sct.integrated.t_only$memory_cd8 <- ifelse(sct.integrated.t_only$seurat_cluster %in% c(1,3,5,14), 
+#                                            "Memory CD8", 
+#                                            "Other")
+
+# sct.integrated.t_only@meta.data %>% group_by(organ.disease) %>% summarise(prop_mem_cd8 = sum(memory_cd8 == "Memory CD8") / n())
+# 
+# # Fisher's exact test
+# fisher.test(sct.integrated.t_only@meta.data %>% filter(sample_type == "Lung") %>% select(disease, memory_cd8) %>% table() %>% t())
+# fisher.test(sct.integrated.t_only@meta.data %>% filter(sample_type == "HLN") %>% select(disease, memory_cd8) %>% table() %>% t())
+```
+
+Let's subset our Seurat object to only keep the ones with the relevant TCR annotations
+
+```{r clonalysis_prep, eval=FALSE, include=FALSE}
+# Number of combined cells (prior to removing clusters 9 and 11)
+length(!is.na(sct.integrated@meta.data$CTaa))
+
+# Number of T cells only (after removing clusters 9 and 11)
+length(!is.na(sct.integrated.t_only@meta.data$CTaa))
+
+# Number of T cells with contig annotations
+sum(!is.na(sct.integrated.t_only@meta.data$CTaa))
+
+# Now subset the T cells to keep only the ones with TCR annotations
+sct.integrated.t_only_with_tcr <- subset(sct.integrated.t_only, cells = which(!is.na(sct.integrated.t_only@meta.data$CTaa)))
+
+# Now what we really care about is the amino acid sequence for the TRB chain, so we can extract that from the "CTaa" metadata field 
+# Which is of the form "[TRA_aa]_[TRB_aa]" - so we will split on the underscore and store them separately in the metadata
+tr_parts <- read.table(text = sct.integrated.t_only_with_tcr@meta.data$CTaa, sep = "_", col.names = c("TRAaa", "TRBaa"))
+sct.integrated.t_only_with_tcr@meta.data$TRAaa <- tr_parts$TRAaa
+sct.integrated.t_only_with_tcr@meta.data$TRBaa <- tr_parts$TRBaa
+
+# However this does not guarantee that they have a TCR-B annotation, so we should really just subset the T cells 
+# whose newly created "TRBaa" is not NA
+sct.integrated.with_trb <- subset(sct.integrated.t_only_with_tcr, 
+                                  cells = which(!is.na(sct.integrated.t_only_with_tcr@meta.data$TRBaa)))
+
+sct.integrated.with_trb <- PrepSCTFindMarkers(sct.integrated.with_trb)
+
+# Let's take a moment to save this
+sct.integrated.with_trb %>% readr::write_rds(paste0(data_dir, "sct.integrated.with_trb.rds"))
+```
+
+```{r memory_cd8_dge_by_disease_in_organ, eval=FALSE, include=FALSE}
+
+## TODO: NEED TO UPDATE
+
+Idents(sct.integrated.t_only) <- sct.integrated.t_only$memory_cd8
+sct.integrated.memory_cd8_only <- subset(sct.integrated.t_only, idents = c("Memory CD8"))
+sct.integrated.memory_cd8_only <- PrepSCTFindMarkers(sct.integrated.memory_cd8_only)
+
+Idents(sct.integrated.t_only) <- sct.integrated.t_only$organ.disease
+VlnPlot(sct.integrated.t_only, features = c("GZMB", "GZMA", "GZMK", "GZMH", "PRF1", "CCL5"))
+
+Idents(sct.integrated.memory_cd8_only) <- sct.integrated.memory_cd8_only$organ.disease
+VlnPlot(sct.integrated.memory_cd8_only, features = c("GZMB", "GZMA", "GZMK", "GZMH", "PRF1", "CCL5"))
+
+# What's the DGE between CLAD and Control in LN and Lung? (For all T cells)
+Idents(sct.integrated.t_only) <- sct.integrated.t_only$organ.disease
+t_cell_dge_by_disease_in_lung <- FindMarkers(sct.integrated.t_only, 
+                                                 ident.1 = "Lung_CLAD", 
+                                                 ident.2 = "Lung_Control")
+t_cell_dge_by_disease_in_lung
+DoHeatmap(sct.integrated.t_only, 
+          features = rownames(t_cell_dge_by_disease_in_lung %>% arrange(desc(avg_log2FC))), 
+          cells = names(sct.integrated.t_only$sample_type[sct.integrated.t_only$sample_type == "Lung"])) + NoLegend()
+
+t_cell_dge_by_disease_in_hln <- FindMarkers(sct.integrated.t_only, 
+                                                 ident.1 = "HLN_CLAD", 
+                                                 ident.2 = "HLN_Control")
+t_cell_dge_by_disease_in_hln
+DoHeatmap(sct.integrated.t_only, 
+          features = rownames(t_cell_dge_by_disease_in_hln %>% arrange(desc(avg_log2FC))), 
+          cells = names(sct.integrated.t_only$sample_type[sct.integrated.t_only$sample_type == "HLN"])) + NoLegend()
+
+# What's the DGE between CLAD and Control in LN and Lung? (For TRM CD8 only)
+
+memory_cd8_dge_by_disease_in_lung <- FindMarkers(sct.integrated.memory_cd8_only, 
+                                                 ident.1 = "Lung_CLAD", 
+                                                 ident.2 = "Lung_Control")
+memory_cd8_dge_by_disease_in_lung
+DoHeatmap(sct.integrated.memory_cd8_only, 
+          features = rownames(memory_cd8_dge_by_disease_in_lung %>% arrange(desc(avg_log2FC))), 
+          cells = names(sct.integrated.memory_cd8_only$sample_type[sct.integrated.memory_cd8_only$sample_type == "Lung"])) + NoLegend()
+
+Idents(sct.integrated.t_only) <- sct.integrated.t_only$organ.disease
+tcell_dge_by_disease_in_hln <- FindMarkers(sct.integrated.t_only, ident.1 = "HLN_CLAD", ident.2 = "HLN_Control")
+tcell_dge_by_disease_in_hln
+DoHeatmap(sct.integrated.t_only, 
+          features = rownames(tcell_dge_by_disease_in_hln %>% arrange(desc(avg_log2FC))), 
+          cells = names(sct.integrated.t_only$sample_type[sct.integrated.t_only$sample_type == "HLN"])) + NoLegend()
+
+
+
+memory_cd8_dge_by_disease_in_hln <- FindMarkers(sct.integrated.memory_cd8_only, ident.1 = "HLN_CLAD", ident.2 = "HLN_Control")
+memory_cd8_dge_by_disease_in_hln
+DoHeatmap(sct.integrated.memory_cd8_only, 
+          features = rownames(memory_cd8_dge_by_disease_in_hln %>% arrange(desc(avg_log2FC))), 
+          cells = names(sct.integrated.memory_cd8_only$sample_type[sct.integrated.memory_cd8_only$sample_type == "HLN"])) + NoLegend()
+
+# ggsave(filename = paste("./results/Heatmap_top50_degs_disease_", format(Sys.time(), "%Y%m%d%H%M") ,".png"), 
+#        plot = p) 
+#        #height = 800, width = 1200, units = "px")
+
+t.test(sct.integrated.memory_cd8_only@assays$SCT@data["GZMB", sct.integrated.memory_cd8_only$organ.disease == "Lung_CLAD"], 
+       sct.integrated.memory_cd8_only@assays$SCT@data["GZMB", sct.integrated.memory_cd8_only$organ.disease == "Lung_Control"])
+```
+
+# LITatPITT
+
+```{r read_in_data, include=FALSE}
+sct.integrated <- readr::read_rds(paste0(data_dir, "sct_integrated.rds"))
+
+sct.integrated.with_trb <- readr::read_rds(paste0(data_dir, "sct.integrated.with_trb.rds"))
+```
+
+```{r initial_umap_and_feature_plots, echo=FALSE}
+DefaultAssay(sct.integrated) <- "SCT"
+DefaultAssay(sct.integrated.with_trb) <- "SCT"
+
+Idents(sct.integrated) <- sct.integrated$seurat_cluster
+Idents(sct.integrated.with_trb) <- sct.integrated.with_trb$seurat_cluster
+
+#pdf(file = paste0(figures_dir, "umap_clusters_all_cells_by_organ_disease", format(Sys.time(), "%Y%m%d%_%H%M%S"),".pdf"), 
+#    width = 12, height = 8)
+DimPlot(sct.integrated, reduction = "umap", split.by = "organ.disease") + 
+  labs(title = "All cells and clusters")
+#dev.off()
+
+#pdf(file = paste0(figures_dir, "umap_clusters_t_cells_only_by_organ_disease", format(Sys.time(), "%Y%m%d%_%H%M%S"),".pdf"), 
+#    width = 12, height = 8)
+DimPlot(sct.integrated.with_trb, reduction = "umap", split.by = "organ.disease") + 
+  labs(title = "T-cells with TRB annotation")
+#dev.off()
+
+#pdf(file = paste0(figures_dir, "feature_plot_markers_all_cells", format(Sys.time(), "%Y%m%d%_%H%M%S"),".pdf"), 
+#    width = 12, height = 8)
+FeaturePlot(sct.integrated, features = c("TRBC1", "CD3D", "CD4", "CD8A"), label = TRUE)
+FeaturePlot(sct.integrated, features = c("MS4A1", "CD68", "CD163", "CD14"), label = TRUE)
+#dev.off()
+
+#pdf(file = paste0(figures_dir, "feature_plot_markers_t_cells", format(Sys.time(), "%Y%m%d%_%H%M%S"),".pdf"), 
+#    width = 12, height = 8)
+FeaturePlot(sct.integrated.with_trb, features = c("TRBC1", "CD3D", "CD4", "CD8A"), label = TRUE)
+FeaturePlot(sct.integrated.with_trb, features = c("MS4A1", "CD68", "CD163", "CD14"), label = TRUE)
+#dev.off()
+```
+
+```{r t_cell_dges, echo=FALSE}
+Idents(sct.integrated.with_trb) <- sct.integrated.with_trb$disease
+
+degs_clad_vs_all <- FindMarkers(sct.integrated.with_trb, ident.1 = "CLAD")
+
+degs_clad_vs_all[1:50, c(2,5)] %>% tibble::as_tibble(rownames = "gene") %>%  readr::write_csv(paste0(figures_dir, "top50_degs_clad_vs_all.csv"))
+
+pdf(file = paste0(figures_dir, "vln_nkg7_organ_disease", format(Sys.time(), "%Y%m%d%_%H%M%S"),".pdf"), 
+    width = 12, height = 8)
+VlnPlot(sct.integrated.with_trb, 
+        features = c("NKG7"), 
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE)
+dev.off()
+
+```
+
+
+# Clonalysis
+
+```{r clonalysis_diversity, echo=FALSE}
+sct.integrated.with_trb$patient.organ = paste0(sct.integrated.with_trb$patient, 
+                                               "_", 
+                                               sct.integrated.with_trb$sample_type)
+
+pdf(file = paste0(figures_dir, "clonal_overlap_diversity", format(Sys.time(), "%Y%m%d%_%H%M%S"),".pdf"), 
+    width = 12, height = 8)
+clonalOverlap(sct.integrated.with_trb, 
+              cloneCall = "aa", 
+              split.by = "organ.disease",
+              method = "overlap")
+
+clonalDiversity(sct.integrated.with_trb, 
+                cloneCall = "aa", 
+                chain = "TRB", 
+                split.by = "disease")
+
+clonalDiversity(sct.integrated.with_trb, 
+                cloneCall = "aa", 
+                chain = "TRB", 
+                split.by = "organ.disease")
+
+VlnPlot(sct.integrated.with_trb, 
+        features = c("NKG7"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE)
+
+VlnPlot(sct.integrated.with_trb, 
+        features = c("GZMB"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE) + NoLegend()
+
+VlnPlot(sct.integrated.with_trb, 
+        features = c("GZMA"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE) + NoLegend()
+
+VlnPlot(sct.integrated.with_trb, 
+        features = c("GZMK"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE) + NoLegend()
+
+VlnPlot(sct.integrated.with_trb, 
+        features = c("GZMH"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE) + NoLegend()
+
+VlnPlot(sct.integrated.with_trb, 
+        features = c("PRF1"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE)
+
+VlnPlot(sct.integrated.with_trb, 
+        features = c("FCGR2A"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE)
+
+VlnPlot(sct.integrated.with_trb, 
+        features = c("FCGR2B"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "sample_type", 
+        split.plot = TRUE)
+dev.off()
+
+#cowplot::plot_grid(p1, p2, p3, p4, p5)
+
+
+
+```
+
+```{r clonalysis_addl}
+#-----------
+clonalOverlap(sct.integrated.with_trb, 
+              cloneCall = "aa", 
+              split.by = "patient",
+              method = "overlap")
+
+clonalOverlap(sct.integrated.with_trb, 
+              cloneCall = "aa", 
+              split.by = "disease",
+              method = "overlap")
+
+clonalOverlap(sct.integrated.with_trb, 
+              cloneCall = "aa", 
+              split.by = "patient.organ",
+              method = "overlap") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+clonalDiversity(sct.integrated.with_trb, 
+                cloneCall = "aa", 
+                chain = "TRB", 
+                split.by = "patient")
+
+clonalDiversity(sct.integrated.with_trb, 
+                cloneCall = "aa", 
+                chain = "TRB", 
+                split.by = "organ.disease")
+
+clonalDiversity(sct.integrated.with_trb, 
+                cloneCall = "aa", 
+                chain = "TRB", 
+                split.by = "organ.disease")
+
+clonalDiversity(sct.integrated.with_trb, 
+                cloneCall = "aa", 
+                chain = "TRB", 
+                split.by = "patient.organ")
+
+StartracDiversity(sct.integrated.with_trb, 
+                  type = "disease", 
+                  sample = "patient", 
+                  by = "overall")
+```
+
+```{r clonalysis5, eval=FALSE, include=FALSE}
+# Violin Plots for CLAD Top 3 Clones vs All Control
+sct.integrated.with_trb.temp_subset_clad_top_vs_all_control <- subset(sct.integrated.with_trb, 
+                                                                       cells = append(cells_clad_top_clones, cells_control))
+                                                                       
+
+VlnPlot(sct.integrated.with_trb.temp_subset_clad_top_vs_all_control, 
+        features = c("GZMB", "GZMA", "GZMK", "GZMH", "PRF1"), 
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "disease")
+
+VlnPlot(sct.integrated.with_trb.temp_subset_clad_top_vs_all_control, 
+        features = c("CCL5", "CD69"),
+        pt.size = 0,
+        group.by = "disease", 
+        split.by = "disease")
+
+
+# Violin Plots for CLAD Top 3 Clones vs All Other CLAD cells
+Idents(sct.integrated.with_trb) <- sct.integrated.with_trb$disease
+sct.integrated.with_trb.clad_only <- subset(sct.integrated.with_trb, idents = c("CLAD"))
+
+VlnPlot(sct.integrated.with_trb.clad_only, 
+        features = c("GZMB", "GZMA", "GZMK"),
+        pt.size = 0,
+        group.by = "highlight", 
+        split.by = "highlight")
+
+VlnPlot(sct.integrated.with_trb.clad_only, 
+        features = c("GZMH", "PRF1"), 
+        pt.size = 0,
+        group.by = "highlight", 
+        split.by = "highlight")
+
+VlnPlot(sct.integrated.with_trb.clad_only, 
+        features = c("CCL5", "CD69"),
+        pt.size = 0,
+        group.by = "highlight", 
+        split.by = "highlight")
+```
+
+
+# Phenotyping
+```{r phenotyping}
+library(patchwork)
+
+Idents(sct.integrated.with_trb) <- sct.integrated.with_trb$seurat_clusters
+DefaultAssay(sct.integrated.with_trb) <- "SCT"
+
+# CD4 vs CD8
+FeaturePlot(sct.integrated.with_trb, 
+            features = c("TRBC1", "CD3D", "CD4", "CD8A"), 
+            label = TRUE) + 
+  plot_annotation("CD4 vs CD8")
+
+# Naive
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$naive$surface), 
+            label = TRUE) + 
+  plot_annotation("CD8 Naive Surface")
+
+# Effector 
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$effector$surface), 
+            label = TRUE) + 
+  plot_annotation("CD8 Effector Surface")
+
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$effector$intra), 
+            label = TRUE) + 
+  plot_annotation("CD8 Effector Intra")
+
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$effector$cytokines), 
+            label = TRUE) + 
+  plot_annotation("CD8 Effector Cytokines")
+
+# Effector Memory
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$effector_memory$surface), 
+            label = TRUE) + 
+  plot_annotation("CD8 Effector Memory Surface")
+
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$effector_memory$intra), 
+            label = TRUE) + 
+  plot_annotation("CD8 Effector Memory Intra")
+
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$effector_memory$cytokines), 
+            label = TRUE) + 
+  plot_annotation("CD8 Effector Memory Cytokines")
+
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$effector_memory$low), 
+            label = TRUE) + 
+  plot_annotation("CD8 Effector Memory Low")
+
+# Central Memory
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$central_memory$surface), 
+            label = TRUE) + 
+  plot_annotation("CD8 Central Memory Surface")
+
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$central_memory$intra), 
+            label = TRUE) + 
+  plot_annotation("CD8 Central Memory Intra")
+
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$central_memory$cytokines), 
+            label = TRUE) + 
+  plot_annotation("CD8 Central Memory Cytokines")
+
+# TRM
+FeaturePlot(sct.integrated.with_trb, 
+            features = c(human_gene_markers_yaml$t$resident_memory$surface), 
+            label = TRUE) + 
+  plot_annotation("CD8 TRM")
+
+# Exhaustion Markers
+FeaturePlot(sct.integrated.with_trb, 
+            features = c("PDCD1", "CTLA4", "HAVCR2", "LAG3"), 
+            label = TRUE) + 
+  plot_annotation("CD8 Exhaustion")
+
+
+# Not really much to say about the clusters after 8
+explantCLAD.with_trb <- subset(sct.integrated.with_trb, idents = c(0, 1, 2, 3, 4, 5, 6, 7, 8))
+explantCLAD.with_trb <- PrepSCTFindMarkers(explantCLAD.with_trb)
+
+explantCLAD.with_trb$phenotype <- factor(
+  case_when(
+    2 == explantCLAD.with_trb$seurat_clusters ~ "CD8 Effector", 
+    4 == explantCLAD.with_trb$seurat_clusters ~ "CD4 Naive", 
+    0 == explantCLAD.with_trb$seurat_clusters | 
+      1 == explantCLAD.with_trb$seurat_clusters | 
+      3 == explantCLAD.with_trb$seurat_clusters | 
+      7 == explantCLAD.with_trb$seurat_clusters | 
+      8 == explantCLAD.with_trb$seurat_clusters ~ "CD4 TRM", 
+    5 == explantCLAD.with_trb$seurat_clusters | 
+      6 == explantCLAD.with_trb$seurat_clusters ~ "CD8 TRM"
+  ),
+  levels = c("CD4 Naive", "CD8 Effector", "CD4 TRM", "CD8 TRM")
+)
+
+explantCLAD.with_trb %>% readr::write_rds(paste0(data_dir, "explantCLAD.with_trb.rds"))
+
+#Idents(sct.integrated.with_trb) <- sct.integrated.with_trb$phenotype
+#DimPlot(sct.integrated.with_trb, label = TRUE, label.size = 2, label.box = TRUE) + NoLegend()
+#ggsave("umap_CD8.png", plot = last_plot(), path = figures_dir, width = 4, height = 3, units = "in")
+```
+
+
