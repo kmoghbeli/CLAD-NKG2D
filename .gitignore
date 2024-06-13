@@ -1,3 +1,9 @@
+# Mac, RStudio, data, figures
+.DS_Store
+.gitignore
+data/
+figures/
+
 # History files
 .Rhistory
 .Rapp.history
