@@ -33,8 +33,8 @@ GG_KM_THEME <-
           aspect.ratio = 2.5/1)
   )
 
-data_dir <- "../data/"
-figures_dir <- "../figures/"
+data_dir <- "./data/"
+figures_dir <- "./figures/"
 
 human_gene_markers_yaml <- yaml::yaml.load("
 t: 
@@ -77,7 +77,7 @@ DefaultAssay(explantCLAD.with_trb) <- "SCT"
   
   
 ## READ IN FLOW DATA
-flow_data_file <- "../CLAD Analysis V6.xls"
+flow_data_file <- "./data/flow/CLAD Analysis V6.xls"
 
 ## Read in Flow Data
 phenotype_flow_data <- readxl::read_xls(flow_data_file, sheet = "Phenotype") %>% 

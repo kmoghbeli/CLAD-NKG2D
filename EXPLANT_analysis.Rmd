@@ -6,27 +6,6 @@ output:
     df_print: paged
 ---
 
-# Project Notes
-EXPLANT CLAD LUNG + LYMPH NODE:
-Here’s what we have:
-6 people - 3 with CLAD, 3 controls ("controls = healthy donor/lungs not used for organ donation) - we have lung and lung draining LN
-- 12 samples total - RNA and TCR - flow sorted recipient T cells for all
-- Q1: what the f- is the lung draining LN? Mostly naive cells - but we’ve transported this lung, why is it like a normal secondary lymphoid organ? Why are there recipient cells there? These seem to have developed after the transplant 
-- Is there a difference in the population of the T cells between the LNs
-- We are also doing IF on the LNs: DAPI, CD4, CD8, CD45RA
-- Suspect there is more clonal overlap between the CLAD lung and LN as compared to the Healthy
-- Q2: relation to the lung/clonal overlap
-- Q3: From the overlap, is there something unique about the expanding clones? So take the overlapping clones and compare
-- 
-
-10/5/2022 - Mark's Questions
-1. What's the difference between CLAD and Control in LN and Lung?
-2. What we see globally as differences in Trm LN and Trm Lung?
-    1. Can cite Cell Reports Brahma Kumar - "CD69" reliably identifies TRM
-    2. Can also look at overlapping clones
-3. What is different about LN TRM and a Lung TRM?
-4. Flow Cytometry - when designing my panel, it is worthwhile to put a marker decision tree -> i.e., CD8 cell - all the antibodies that would be on that cell; CD4 cell - all the antibody that will be on that cell
-
 # Init
 
 ```{r setup, include=FALSE}
