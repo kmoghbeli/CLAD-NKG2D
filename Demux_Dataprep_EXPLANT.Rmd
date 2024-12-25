@@ -65,14 +65,14 @@ metadata <- list("nov2021_gw1_data" = list("HTO-1-TotalC" = list(run = "Nov2021"
                                                                  hto = "hto1", 
                                                                  sample_type = HLN, 
                                                                  timepoint = EXPLANT, 
-                                                                 patient = "2020-10-LT",   ## Note from Kaveh - this was previously listed as "2021-47-LT" per our metadata but this appears to be incorrect and this sample appears to have been swapped with 2020-10-LT so this reflects that correction
+                                                                 patient = "2021-10-LT",   ## Note from Kaveh - this was previously listed as "2020-47-LT" per our metadata but this appears to be incorrect and this sample appears to have been swapped with 2021-10-LT so this reflects that correction
                                                                  disease = CLAD), 
                                            "HTO-2-TotalC" = list(run = "Aug2022", 
                                                                  gemwell = "GW1", 
                                                                  hto = "hto2", 
                                                                  sample_type = HLN, 
                                                                  timepoint = EXPLANT, 
-                                                                 patient = "2021-47-LT", 
+                                                                 patient = "2020-47-LT", 
                                                                  disease = CLAD), 
                                            "HTO-3-TotalC" = list(run = "Aug2022", 
                                                                  gemwell = "GW1", 
